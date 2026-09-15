@@ -30,7 +30,30 @@ class ModelSpec:
     local_copies: tuple[tuple[str, str], ...] = ()
     # 完整 funasr（torch）后端用的模型 id（AutoModel model=...）。
     # 与 onnx repo 不同：完整后端用 pt 模型。空则该模型不支持 full 后端。
+    # 可为 FunASR 别名（如 paraformer-zh）或 modelscope owner/name。
     full_model: str = ""
+    # full 后端 snapshot_download 的主仓库（须为 owner/name）；空则从 full_model 解析。
+    full_repo: str = ""
+    # 探测「已下载」时额外认的仓库（历史别名 / 下划线变体 / AutoModel 落盘路径）。
+    full_repo_alts: tuple[str, ...] = ()
+
+
+# FunASR 别名 → ModelScope 主仓库（下载用；探测另见 full_repo_alts）
+FULL_MODEL_ALIASES: dict[str, str] = {
+    "paraformer-zh": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+}
+
+
+def resolve_full_repo(spec: ModelSpec) -> str:
+    """返回 full 后端应下载的 modelscope owner/name；无则空串。"""
+    if spec.full_repo:
+        return spec.full_repo
+    fm = (spec.full_model or "").strip()
+    if not fm:
+        return ""
+    if "/" in fm:
+        return fm
+    return FULL_MODEL_ALIASES.get(fm, "")
 
 
 # ---- ASR（面向用户可选） ----
@@ -44,6 +67,7 @@ SENSEVOICE = ModelSpec(
     builtin_punc=True,
     engine="sensevoice",
     full_model="iic/SenseVoiceSmall",
+    full_repo="iic/SenseVoiceSmall",
 )
 PARAFORMER_ZH = ModelSpec(
     id="iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx",
@@ -54,6 +78,14 @@ PARAFORMER_ZH = ModelSpec(
     builtin_punc=False,
     engine="paraformer",
     full_model="paraformer-zh",
+    full_repo="iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    # 旧版 FunASR 别名落 damo/…；新版可能落到 SeACo；下划线变体见本地 MODELSCOPE_CACHE
+    full_repo_alts=(
+        "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+        "damo/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+        "iic/speech_seaco_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+        "iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    ),
 )
 PARAFORMER_ZH_HOTWORD = ModelSpec(
     id="iic/speech_paraformer-large-contextual_asr_nat-zh-cn-16k-common-vocab8404-onnx",
@@ -66,6 +98,10 @@ PARAFORMER_ZH_HOTWORD = ModelSpec(
     supports_hotwords=True,
     local_copies=(("model_eb.onnx", "model_eb_quant.onnx"),),
     full_model="iic/speech_seaco_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    full_repo="iic/speech_seaco_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    full_repo_alts=(
+        "iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    ),
 )
 
 # ---- 辅助模块（共享，不在用户「模型」下拉里单列） ----

@@ -5,8 +5,9 @@
 - **torch-free**：本模块只 import modelscope，绝不安装 torch-stub
   （modelscope 的 logger 用 find_spec('torch')，发现 torch 就会 import 真 torch_utils）。
   torch-stub 只在 engine 里、且在 modelscope 完成初始化之后安装。
-- SenseVoice 仓库含 893MB 的 model.pt（PyTorch 权重），下载时用 ignore_patterns 跳过，
-  只取 *.onnx + 配置/词表。
+- SenseVoice 仓库含 893MB 的 model.pt（PyTorch 权重），onnx 下载时用 ignore_patterns 跳过，
+  只取 *.onnx + 配置/词表；full 后端则下载 pt 权重。
+- full 后端判定/下载走 ModelSpec.full_repo（及历史落盘路径），与 onnx 的 *.onnx 探测分开。
 """
 from __future__ import annotations
 
@@ -15,13 +16,29 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from ..config import models_dir
-from .registry import REGISTRY, ModelSpec, get_model
+from .registry import REGISTRY, ModelSpec, get_model, resolve_full_repo
 
-# 不需要的大文件（PyTorch 权重等），下载时跳过以省体积/时间
+# onnx 下载时跳过的大文件（PyTorch 权重等）
 _IGNORE_PATTERNS = ["*.pt", "*.pth", "*.bin", "*.safetensors", "*.onnx_data.bak"]
+# full 后端认为「已下载」的权重后缀
+_WEIGHT_GLOBS = ("*.pt", "*.bin", "*.pth", "*.safetensors")
 
 # percent 0..100, downloaded_mb, total_mb
 DownloadProgress = Callable[[float, float, float], None]
+
+
+def _active_backend() -> str:
+    """与 engine.backend() 同优先级，避免 manager↔engine 循环 import。"""
+    import os
+
+    env = os.environ.get("FUNASR_SUBTITLE_BACKEND")
+    if env:
+        return env.strip().lower()
+    try:
+        from .. import _build  # 构建期生成，未提交
+        return str(getattr(_build, "BACKEND", "onnx")).strip().lower()
+    except Exception:
+        return "onnx"
 
 
 class ModelManager:
@@ -44,56 +61,115 @@ class ModelManager:
 
     # ---- 路径与状态 ----
     def local_dir(self, model_id: str) -> Path:
-        """modelscope 缓存约定：<root>/<repo>（repo 形如 owner/name）。"""
+        """onnx 缓存约定：<root>/<repo>（repo 形如 owner/name）。"""
         spec = get_model(model_id)
         return self.root / spec.repo
 
-    def is_downloaded(self, model_id: str) -> bool:
+    def full_local_dir(self, model_id: str) -> Path:
+        """full 后端主下载路径：<root>/<full_repo>。"""
         spec = get_model(model_id)
-        d = self.local_dir(model_id)
+        repo = resolve_full_repo(spec)
+        if not repo:
+            raise ValueError(f"model {model_id} has no full_repo")
+        return self.root / repo
+
+    def _full_repos(self, spec: ModelSpec) -> list[str]:
+        repos: list[str] = []
+        primary = resolve_full_repo(spec)
+        if primary:
+            repos.append(primary)
+        fm = (spec.full_model or "").strip()
+        if fm and "/" in fm and fm not in repos:
+            repos.append(fm)
+        for alt in spec.full_repo_alts:
+            if alt and alt not in repos:
+                repos.append(alt)
+        return repos
+
+    def _full_candidate_dirs(self, spec: ModelSpec) -> list[Path]:
+        """MODELSCOPE_CACHE / snapshot_download 可能落在 root、root/models、root/hub。"""
+        dirs: list[Path] = []
+        seen: set[Path] = set()
+        for repo in self._full_repos(spec):
+            for base in (self.root, self.root / "models", self.root / "hub"):
+                p = base / repo
+                if p not in seen:
+                    seen.add(p)
+                    dirs.append(p)
+        return dirs
+
+    @staticmethod
+    def _dir_has_weights(d: Path) -> bool:
+        if not d.is_dir():
+            return False
+        return any(any(d.glob(g)) for g in _WEIGHT_GLOBS)
+
+    def _is_onnx_ready(self, spec: ModelSpec) -> bool:
+        d = self.root / spec.repo
         if not (d.is_dir() and any(d.glob("*.onnx"))):
             return False
-        # 辅助文件（如 SenseVoice 的 bpe 词表）也必须就位
         for fname, _src in spec.aux_files:
             if not (d / fname).exists():
                 return False
-        # 目录内复制文件（如 contextual 的 model_eb_quant.onnx）也必须就位
         for _src, dst in spec.local_copies:
             if not (d / dst).exists():
                 return False
         return True
 
+    def _is_full_ready(self, spec: ModelSpec) -> bool:
+        if not (spec.full_model or spec.full_repo):
+            return False
+        return any(self._dir_has_weights(d) for d in self._full_candidate_dirs(spec))
+
+    def is_downloaded(self, model_id: str) -> bool:
+        spec = get_model(model_id)
+        if _active_backend() == "full" and (spec.full_model or spec.full_repo):
+            return self._is_full_ready(spec)
+        return self._is_onnx_ready(spec)
+
+    def resolve_dir(self, model_id: str) -> Path:
+        """返回当前后端应使用的本地模型目录（已下载时优先已有路径）。"""
+        spec = get_model(model_id)
+        if _active_backend() == "full" and (spec.full_model or spec.full_repo):
+            for d in self._full_candidate_dirs(spec):
+                if self._dir_has_weights(d):
+                    return d
+            return self.full_local_dir(model_id)
+        return self.local_dir(model_id)
+
     def ensure_dir(self, model_id: str) -> Path:
         """返回本地模型目录；若缺失则同步下载（无进度回调）。"""
         if not self.is_downloaded(model_id):
             self.download(model_id)
-        return self.local_dir(model_id)
+        return self.resolve_dir(model_id)
 
     # ---- 下载 ----
     def download(self, model_id: str, progress: Optional[DownloadProgress] = None) -> Path:
         """同步下载。progress(percent, downloaded_mb, total_mb)。
 
         modelscope 自身的进度回调不稳定，这里用「后台线程下载 + 轮询目录大小」估算进度。
+        full 后端下载 pt 仓库；onnx 后端下载 onnx 仓库（跳过 *.pt）。
         """
         spec = get_model(model_id)
-        target = self.local_dir(model_id)
+        use_full = _active_backend() == "full" and bool(resolve_full_repo(spec))
+        target = self.full_local_dir(model_id) if use_full else self.local_dir(model_id)
 
         if self.is_downloaded(model_id):
             if progress:
                 progress(100.0, spec.size_mb, spec.size_mb)
-            return target
+            return self.resolve_dir(model_id)
 
-        # 串行化同一模型的下载：并发下载会往同一目录写同名文件、互相覆盖/读到半成品。
         lock = self._lock_for(model_id)
         with lock:
-            # 双检：等锁期间别的线程可能已下完。
             if self.is_downloaded(model_id):
                 if progress:
                     progress(100.0, spec.size_mb, spec.size_mb)
-                return target
-            return self._download_locked(spec, target, progress)
+                return self.resolve_dir(model_id)
+            if use_full:
+                return self._download_full_locked(spec, target, progress)
+            return self._download_onnx_locked(spec, target, progress)
 
-    def _download_locked(self, spec, target, progress):  # noqa: ANN001
+    def _download_onnx_locked(self, spec, target, progress):  # noqa: ANN001
         from modelscope.hub.snapshot_download import snapshot_download  # torch-free
         model_id = spec.id
 
@@ -107,7 +183,6 @@ class ModelManager:
                     ignore_file_pattern=_IGNORE_PATTERNS,
                 )
             except TypeError:
-                # 旧/新版本参数名差异：回退到 ignore_patterns
                 try:
                     result["path"] = snapshot_download(
                         spec.repo,
@@ -119,9 +194,48 @@ class ModelManager:
             except Exception as e:  # noqa: BLE001
                 result["error"] = e
 
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
+        self._wait_download(_run, target, spec, progress)
 
+        if "error" in result:
+            raise RuntimeError(f"download failed for {model_id}: {result['error']!r}")
+
+        self._fetch_aux_files(spec, target)
+        self._make_local_copies(spec, target)
+
+        if progress:
+            got = _dir_size(target)
+            progress(100.0, round(got / 1024 / 1024, 1), spec.size_mb)
+        return target
+
+    def _download_full_locked(self, spec, target, progress):  # noqa: ANN001
+        from modelscope.hub.snapshot_download import snapshot_download  # torch-free
+        model_id = spec.id
+        repo = resolve_full_repo(spec)
+        if not repo:
+            raise RuntimeError(f"no full_repo for {model_id}")
+
+        result: dict[str, object] = {}
+
+        def _run() -> None:
+            try:
+                # full：需要 pt 权重，不 ignore *.pt
+                result["path"] = snapshot_download(repo, cache_dir=str(self.root))
+            except Exception as e:  # noqa: BLE001
+                result["error"] = e
+
+        self._wait_download(_run, target, spec, progress)
+
+        if "error" in result:
+            raise RuntimeError(f"download failed for {model_id}: {result['error']!r}")
+
+        if progress:
+            got = _dir_size(target)
+            progress(100.0, round(got / 1024 / 1024, 1), spec.size_mb)
+        return self.resolve_dir(model_id)
+
+    def _wait_download(self, run_fn, target, spec, progress):  # noqa: ANN001
+        t = threading.Thread(target=run_fn, daemon=True)
+        t.start()
         total_bytes = spec.size_mb * 1024 * 1024
         if progress:
             progress(0.0, 0.0, spec.size_mb)
@@ -131,19 +245,6 @@ class ModelManager:
                 got = _dir_size(target)
                 pct = min(99.0, got / total_bytes * 100.0) if total_bytes else 0.0
                 progress(round(pct, 1), round(got / 1024 / 1024, 1), spec.size_mb)
-
-        if "error" in result:
-            raise RuntimeError(f"download failed for {model_id}: {result['error']!r}")
-
-        # 补齐辅助文件（§17：SenseVoice-onnx 缺 bpe 词表）
-        self._fetch_aux_files(spec, target)
-        # 目录内复制/改名（§M8：contextual 的 model_eb_quant.onnx）
-        self._make_local_copies(spec, target)
-
-        if progress:
-            got = _dir_size(target)
-            progress(100.0, round(got / 1024 / 1024, 1), spec.size_mb)
-        return target
 
     def _fetch_aux_files(self, spec: ModelSpec, target: Path) -> None:
         if not spec.aux_files:

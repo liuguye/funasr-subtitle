@@ -134,7 +134,7 @@ function ModelDownloadPanel({
       <SectionLabel>FIRST RUN · 首启下载</SectionLabel>
       <Flex justify="space-between" align="center" gap={16} wrap>
         <Text type="secondary">
-          需下载默认模型 <Text strong style={{ color: STUDIO.text }}>{model.name}</Text>
+          需下载 <Text strong style={{ color: STUDIO.text }}>{model.name}</Text>
           （约 {model.size_mb.toFixed(0)} MB），之后完全离线可用。
         </Text>
         <Button color="primary" variant="solid" loading={downloading} onClick={start}>
@@ -246,9 +246,9 @@ export default function App() {
   useEffect(() => void loadModels(), [loadModels]);
   useEffect(() => () => jobWsRef.current?.close(), []);
 
-  const defaultModel = useMemo(() => models.find((m) => m.id === defaultId), [models, defaultId]);
-  const needsDownload = !!defaultModel && !defaultModel.downloaded;
   const currentModel = useMemo(() => models.find((m) => m.id === modelId), [models, modelId]);
+  // 对当前选中模型提示下载（不只默认 SenseVoice）
+  const needsDownload = !!currentModel && !currentModel.downloaded;
   const supportsHotwords = /contextual/.test(modelId);
   const diarAvailable = !!currentModel?.diarization;  // 仅完整版 + Paraformer
 
@@ -291,6 +291,7 @@ export default function App() {
             setRunning(false);
             jobWsRef.current?.close();
             jobWsRef.current = null;
+            void loadModels();  // 转写过程中可能刚下完模型，刷新「已下载」状态
           } else if (ev.type === "error") {
             settled = true;
             setJobError(ev.message || "转写失败");
@@ -322,7 +323,7 @@ export default function App() {
       setJobError(e instanceof SubtitleApiError ? e.message : "创建任务失败");
       setRunning(false);
     }
-  }, [file, running, modelId, language, diarization, diarAvailable, hotwords, maxChars, punctuation]);
+  }, [file, running, modelId, language, diarization, diarAvailable, hotwords, maxChars, punctuation, loadModels]);
 
   const onCancel = useCallback(async () => {
     if (!job) return;
@@ -374,8 +375,8 @@ export default function App() {
             />
           )}
 
-          {needsDownload && defaultModel && (
-            <ModelDownloadPanel model={defaultModel} onDownloaded={loadModels} />
+          {needsDownload && currentModel && (
+            <ModelDownloadPanel model={currentModel} onDownloaded={loadModels} />
           )}
 
           {/* 装载 / 拖放区 */}

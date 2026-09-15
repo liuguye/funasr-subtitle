@@ -110,6 +110,14 @@ Windows 音视频转字幕，纯本地离线、CPU 即可跑，中文粤语强�
 
 **环境**：Windows · Python 3.11 · Node 20+
 
+根目录双击 `start-dev.bat`，会分别打开后端（8765）和前端两个窗口。
+
+```bat
+start-dev.bat
+```
+
+也可手动分别启动：
+
 ```powershell
 # 后端（在 backend/ 下运行）
 backend\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8765

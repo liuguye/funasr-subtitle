@@ -6,6 +6,7 @@ from .registry import (
     VAD_MODEL,
     ModelSpec,
     get_model,
+    resolve_full_repo,
 )
 from .manager import ModelManager
 
@@ -16,5 +17,6 @@ __all__ = [
     "REGISTRY",
     "ModelSpec",
     "get_model",
+    "resolve_full_repo",
     "ModelManager",
 ]

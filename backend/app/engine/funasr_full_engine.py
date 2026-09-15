@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -67,7 +68,6 @@ class FunasrFullEngine:
     def __init__(self, opts: EngineOptions, manager=None) -> None:  # manager 仅为签名兼容
         self.opts = opts
         spec = get_model(opts.model_id)
-        self._full_model = spec.full_model or "iic/SenseVoiceSmall"
         self._builtin_punc = spec.builtin_punc
         self._model = None
         self._loaded = False
@@ -81,13 +81,19 @@ class FunasrFullEngine:
         import torch
         from funasr import AutoModel
 
+        from ..models.manager import ModelManager
+
+        # 走 ModelManager：UI「已下载」与 AutoModel 用同一套本地目录（避免只认 onnx）。
+        root = Path(self.opts.models_root) if self.opts.models_root else models_dir()
+        asr_dir = str(ModelManager(root).ensure_dir(self.opts.model_id))
+
         # full 是「GPU 构建」：有 CUDA 就用（前端已隐藏 GPU 开关，不依赖 use_gpu）。
         # 设 FUNASR_SUBTITLE_FORCE_CPU=1 可强制 CPU（无卡机/排障）。
         force_cpu = os.environ.get("FUNASR_SUBTITLE_FORCE_CPU") == "1"
         use_cuda = (not force_cpu) and torch.cuda.is_available()
         self.gpu_active = use_cuda
         kwargs = dict(
-            model=self._full_model,
+            model=asr_dir,
             vad_model="fsmn-vad",
             device="cuda:0" if use_cuda else "cpu",
             disable_update=True,
