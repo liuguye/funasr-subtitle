@@ -110,7 +110,7 @@ Windows 音视频转字幕，纯本地离线、CPU 即可跑，中文粤语强�
 
 **环境**：Windows · Python 3.11 · Node 20+
 
-根目录双击 `start-dev.bat`，会分别打开后端（8765）和前端两个窗口。
+根目录双击 `start-dev.bat`，会在同一窗口启动后端（8765）和前端；`Ctrl+C` 结束两者。
 
 ```bat
 start-dev.bat

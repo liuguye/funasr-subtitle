@@ -20,12 +20,47 @@ if exist "backend\.venv-full\Scripts\python.exe" (
   echo       To enable GPU: create backend\.venv-full and re-run this script.
 )
 
-pushd backend
-start "funasr-subtitle backend" cmd /k "set FUNASR_SUBTITLE_BACKEND=%BACKEND%&& %VENV_PY% -m uvicorn app.main:app --reload --port 8765"
-popd
+if not exist "frontend\node_modules\" (
+  pushd frontend
+  call npm ci
+  if errorlevel 1 (
+    popd
+    echo [error] npm ci failed
+    pause
+    exit /b 1
+  )
+  popd
+)
 
-pushd frontend
-if not exist "node_modules\" call npm ci
-start "funasr-subtitle frontend" cmd /k "npm run dev"
-popd
+echo [dev] starting backend + frontend in this window. Ctrl+C to stop both.
+echo.
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$root = Get-Location;" ^
+  "$backendDir = Join-Path $root 'backend';" ^
+  "$frontendDir = Join-Path $root 'frontend';" ^
+  "$py = Join-Path $backendDir '%VENV_PY%';" ^
+  "$env:FUNASR_SUBTITLE_BACKEND = '%BACKEND%';" ^
+  "Write-Host '[backend] uvicorn :8765';" ^
+  "$be = Start-Process -FilePath $py -ArgumentList '-m','uvicorn','app.main:app','--reload','--port','8765' -WorkingDirectory $backendDir -NoNewWindow -PassThru;" ^
+  "Write-Host '[frontend] npm run dev';" ^
+  "$fe = Start-Process -FilePath 'npm.cmd' -ArgumentList 'run','dev' -WorkingDirectory $frontendDir -NoNewWindow -PassThru;" ^
+  "$pids = @($be.Id, $fe.Id);" ^
+  "function Stop-Dev {" ^
+  "  foreach ($id in $pids) {" ^
+  "    if (-not $id) { continue }" ^
+  "    Start-Process -FilePath 'taskkill.exe' -ArgumentList '/PID',$id,'/T','/F' -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null" ^
+  "  }" ^
+  "}" ^
+  "try {" ^
+  "  while ($true) {" ^
+  "    Start-Sleep -Milliseconds 500;" ^
+  "    $be.Refresh(); $fe.Refresh();" ^
+  "    if ($be.HasExited -or $fe.HasExited) { break }" ^
+  "  }" ^
+  "} finally {" ^
+  "  Write-Host ''; Write-Host '[dev] stopping...';" ^
+  "  Stop-Dev" ^
+  "}"
+
 endlocal
