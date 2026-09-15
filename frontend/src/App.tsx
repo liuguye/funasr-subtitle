@@ -241,7 +241,8 @@ export default function App() {
   const [hotwords, setHotwords] = useState("");
   const [maxChars, setMaxChars] = useState(30);
   const [punctuation, setPunctuation] = useState<"auto" | "on" | "off">("auto");
-  const [compute, setCompute] = useState("CPU");
+  const [compute, setCompute] = useState("CPU · …");
+  const [backendKind, setBackendKind] = useState<string>("");
   // DirectML 实测对量化模型比 CPU 慢，已隐藏开关；后端仍保留 use_gpu 能力（默认 false）。
   const useGpu = false;
 
@@ -260,6 +261,7 @@ export default function App() {
       setDefaultId(res.default_id);
       setModelId((cur) => cur || res.default_id);
       if (res.compute) setCompute(res.compute);
+      if (res.backend) setBackendKind(res.backend);
     } catch (e) {
       setModelsError(e instanceof SubtitleApiError ? e.message : "无法获取模型列表");
     }
@@ -380,7 +382,17 @@ export default function App() {
             <span className="label-cap" style={{ marginLeft: 6 }}>本地 · 离线 转写</span>
           </Flex>
           <Space size={10}>
-            <Tag color={compute.startsWith("GPU") ? "gold" : "default"} className="mono" style={{ marginRight: 0 }}>{compute}</Tag>
+            <Tooltip
+              title={
+                compute.startsWith("GPU")
+                  ? "完整 funasr 后端，正在使用 NVIDIA CUDA"
+                  : backendKind === "full"
+                    ? "完整 funasr 后端，但当前无可用 CUDA（驱动/torch 或已设 FUNASR_SUBTITLE_FORCE_CPU=1）→ CPU"
+                    : "onnx 后端（默认开发环境），固定 CPU。要用 GPU：建 backend\\.venv-full 并设 FUNASR_SUBTITLE_BACKEND=full"
+              }
+            >
+              <Tag color={compute.startsWith("GPU") ? "gold" : "default"} className="mono" style={{ marginRight: 0 }}>{compute}</Tag>
+            </Tooltip>
             <Popconfirm title="退出 funasr-subtitle？" okText="退出" cancelText="取消" onConfirm={onShutdown}>
               <Button color="danger" variant="text" icon={<PoweroffOutlined />} size="small">退出</Button>
             </Popconfirm>

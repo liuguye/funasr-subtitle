@@ -31,15 +31,22 @@ def backend() -> str:
 
 
 def compute_label() -> str:
-    """供 UI 显示的算力标签：full + CUDA -> 'GPU · CUDA'，否则 'CPU'。"""
-    if backend() == "full":
-        try:
-            import torch
-            if torch.cuda.is_available():
-                return "GPU · CUDA"
-        except Exception:
-            pass
-    return "CPU"
+    """供 UI 显示的算力标签（与真实推理设备一致）。
+
+    - full + CUDA 可用且未强制 CPU → ``GPU · CUDA``
+    - full 但无 CUDA / 强制 CPU → ``CPU · full``
+    - onnx 后端 → ``CPU · onnx``（不看显卡；onnx 路径默认不上 CUDA）
+    """
+    if backend() != "full":
+        return "CPU · onnx"
+    force_cpu = os.environ.get("FUNASR_SUBTITLE_FORCE_CPU") == "1"
+    try:
+        import torch
+        if (not force_cpu) and torch.cuda.is_available():
+            return "GPU · CUDA"
+    except Exception:
+        pass
+    return "CPU · full"
 
 
 def build_engine(
@@ -73,5 +80,7 @@ __all__ = [
     "EngineOptions",
     "ProgressCallback",
     "Stage",
+    "backend",
+    "compute_label",
     "build_engine",
 ]

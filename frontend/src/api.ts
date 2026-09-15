@@ -67,7 +67,9 @@ export function getHealth(): Promise<HealthResponse> {
 export interface ModelsResponse {
   models: ModelInfo[];
   default_id: string;
-  compute?: string; // "GPU · CUDA" | "CPU"
+  backend?: "onnx" | "full" | string;
+  /** "GPU · CUDA" | "CPU · full" | "CPU · onnx" */
+  compute?: string;
 }
 
 export function getModels(): Promise<ModelsResponse> {

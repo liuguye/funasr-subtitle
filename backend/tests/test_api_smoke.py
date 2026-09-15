@@ -20,6 +20,8 @@ def test_health(client):
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok" and "version" in body
+    assert body["backend"] in {"onnx", "full"}
+    assert "compute" in body
 
 
 def test_models_contract(client):
@@ -27,6 +29,8 @@ def test_models_contract(client):
     assert r.status_code == 200
     body = r.json()
     assert "models" in body and "default_id" in body
+    assert body.get("backend") in {"onnx", "full"}
+    assert body.get("compute") in {"GPU · CUDA", "CPU · full", "CPU · onnx"}
     assert any(m["id"] == body["default_id"] for m in body["models"])
     for m in body["models"]:
         assert {"id", "name", "task", "size_mb", "downloaded"} <= set(m)

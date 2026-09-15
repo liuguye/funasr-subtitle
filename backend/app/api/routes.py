@@ -39,7 +39,13 @@ def _content_disposition(filename: str) -> str:
 # ---- health ----
 @router.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "version": __version__}
+    from ..engine import backend, compute_label
+    return {
+        "status": "ok",
+        "version": __version__,
+        "backend": backend(),
+        "compute": compute_label(),
+    }
 
 
 # ---- models ----
@@ -48,7 +54,8 @@ async def list_models(request: Request) -> dict:
     from ..engine import backend, compute_label
     mgr: ModelManager = request.app.state.models
     # 说话人分离仅完整版(full) + Paraformer 系（能出 sentence_info）支持
-    diar_backend = backend() == "full"
+    be = backend()
+    diar_backend = be == "full"
     out = []
     for spec in ASR_MODELS:
         out.append({
@@ -56,8 +63,12 @@ async def list_models(request: Request) -> dict:
             "size_mb": spec.size_mb, "downloaded": mgr.is_downloaded(spec.id),
             "diarization": diar_backend and spec.engine in ("paraformer", "contextual"),
         })
-    return {"models": out, "default_id": DEFAULT_MODEL_ID,
-            "compute": compute_label()}
+    return {
+        "models": out,
+        "default_id": DEFAULT_MODEL_ID,
+        "backend": be,
+        "compute": compute_label(),
+    }
 
 
 @router.post("/models/{model_id:path}/download")
