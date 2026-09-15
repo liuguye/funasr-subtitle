@@ -257,6 +257,16 @@ class FunasrEngine:
         # 确保模型已在本地（缺则同步下载）
         vad_dir = str(self.manager.ensure_dir(VAD_MODEL.id))
         asr_dir = str(self.manager.ensure_dir(self.opts.model_id))
+        # #region agent log
+        try:
+            import json, time
+            from pathlib import Path as _P
+            _vd = _P(vad_dir)
+            with open(r"c:\_\_P\funasr-subtitle\debug-ed1b5f.log", "a", encoding="utf-8") as _df:
+                _df.write(json.dumps({"sessionId": "ed1b5f", "runId": "post-fix", "hypothesisId": "V1", "location": "funasr_engine.py:load", "message": "engine load dirs", "data": {"vad_dir": vad_dir, "asr_dir": asr_dir, "vad_names": [p.name for p in _vd.iterdir()] if _vd.is_dir() else [], "vad_has_config": (_vd / "configuration.json").exists(), "vad_has_onnx": any(_vd.glob("*.onnx"))}, "timestamp": int(time.time() * 1000)}, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        # #endregion
 
         # GPU：用 DirectML（全显卡，§10/M8）。打补丁把 funasr 的 session 重定向到 DML EP；
         # funasr 自身 device_id 保持 -1（其 CUDA 选择逻辑被我们旁路）。失败则回退 CPU。
@@ -264,9 +274,20 @@ class FunasrEngine:
         device_id = "-1"
         threads = self.opts.num_threads or 4
 
-        self._vad = funasr_onnx.Fsmn_vad(
-            vad_dir, quantize=True, device_id=device_id, intra_op_num_threads=threads
-        )
+        try:
+            self._vad = funasr_onnx.Fsmn_vad(
+                vad_dir, quantize=True, device_id=device_id, intra_op_num_threads=threads
+            )
+        except Exception as e:
+            # #region agent log
+            try:
+                import json, time
+                with open(r"c:\_\_P\funasr-subtitle\debug-ed1b5f.log", "a", encoding="utf-8") as _df:
+                    _df.write(json.dumps({"sessionId": "ed1b5f", "runId": "post-fix", "hypothesisId": "V1", "location": "funasr_engine.py:Fsmn_vad", "message": "VAD load failed", "data": {"vad_dir": vad_dir, "err_type": type(e).__name__, "err": str(e)[:500]}, "timestamp": int(time.time() * 1000)}, ensure_ascii=False) + "\n")
+            except Exception:
+                pass
+            # #endregion
+            raise
         # 按引擎类型实例化 ASR
         if self._engine_kind == "paraformer":
             self._asr = funasr_onnx.Paraformer(

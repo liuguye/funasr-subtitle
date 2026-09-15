@@ -70,6 +70,22 @@ def test_full_backend_detects_seaco_underscore_alt(
     assert mgr.is_downloaded(PARAFORMER_ZH.id)
 
 
+def test_onnx_backend_detects_modelscope_snapshot_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """新版 modelscope 落在 root/models/<owner>--<name>/snapshots/<rev>/。"""
+    monkeypatch.setenv("FUNASR_SUBTITLE_BACKEND", "onnx")
+    mgr = ModelManager(tmp_path)
+    from app.models.registry import VAD_MODEL
+
+    snap = tmp_path / "models" / "iic--speech_fsmn_vad_zh-cn-16k-common-onnx" / "snapshots" / "master"
+    snap.mkdir(parents=True)
+    (snap / "model_quant.onnx").write_bytes(b"o")
+    (snap / "configuration.json").write_text("{}")
+    assert mgr.is_downloaded(VAD_MODEL.id)
+    assert mgr.resolve_dir(VAD_MODEL.id) == snap
+
+
 def test_onnx_backend_ignores_pt_only(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

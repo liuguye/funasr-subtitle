@@ -1,0 +1,3 @@
+{"sessionId":"ed1b5f","hypothesisId":"C","location":"App.tsx:export-button","message":"export click","data":{"jobId":"bc9e568abd42","filename":"序列 01.mp4","fmt":"srt","href":"/api/jobs/bc9e568abd42/export?format=srt"},"timestamp":1789458310905}
+{"sessionId":"ed1b5f","hypothesisId":"C","location":"App.tsx:export-button","message":"export click","data":{"jobId":"bc9e568abd42","filename":"序列 01.mp4","fmt":"srt","href":"/api/jobs/bc9e568abd42/export?format=srt"},"timestamp":1789458453241}
+{"sessionId":"ed1b5f","hypothesisId":"C","location":"App.tsx:export-button","message":"export click","data":{"jobId":"89cae2487fc4","filename":"序列 01.mp4","fmt":"srt","href":"/api/jobs/89cae2487fc4/export?format=srt"},"timestamp":1789458559385}

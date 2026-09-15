@@ -104,8 +104,44 @@ class ModelManager:
             return False
         return any(any(d.glob(g)) for g in _WEIGHT_GLOBS)
 
-    def _is_onnx_ready(self, spec: ModelSpec) -> bool:
-        d = self.root / spec.repo
+    def _onnx_base_dirs(self, spec: ModelSpec) -> list[Path]:
+        """旧布局 <root>/<owner>/<name>；新 modelscope 可能是 <root>/models/<owner>--<name>。"""
+        repo = spec.repo
+        dashed = repo.replace("/", "--")
+        dirs: list[Path] = []
+        seen: set[Path] = set()
+        for p in (
+            self.root / repo,
+            self.root / "models" / repo,
+            self.root / "hub" / repo,
+            self.root / dashed,
+            self.root / "models" / dashed,
+            self.root / "hub" / dashed,
+        ):
+            if p not in seen:
+                seen.add(p)
+                dirs.append(p)
+        return dirs
+
+    def _onnx_candidate_dirs(self, spec: ModelSpec) -> list[Path]:
+        out: list[Path] = []
+        seen: set[Path] = set()
+
+        def add(p: Path) -> None:
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
+
+        for base in self._onnx_base_dirs(spec):
+            add(base)
+            snap = base / "snapshots"
+            if snap.is_dir():
+                for rev in sorted(snap.iterdir()):
+                    if rev.is_dir():
+                        add(rev)
+        return out
+
+    def _onnx_dir_complete(self, spec: ModelSpec, d: Path) -> bool:
         if not (d.is_dir() and any(d.glob("*.onnx"))):
             return False
         for fname, _src in spec.aux_files:
@@ -115,6 +151,12 @@ class ModelManager:
             if not (d / dst).exists():
                 return False
         return True
+
+    def _onnx_ready_dir(self, spec: ModelSpec) -> Optional[Path]:
+        return next((d for d in self._onnx_candidate_dirs(spec) if self._onnx_dir_complete(spec, d)), None)
+
+    def _is_onnx_ready(self, spec: ModelSpec) -> bool:
+        return self._onnx_ready_dir(spec) is not None
 
     def _is_full_ready(self, spec: ModelSpec) -> bool:
         if not (spec.full_model or spec.full_repo):
@@ -135,7 +177,8 @@ class ModelManager:
                 if self._dir_has_weights(d):
                     return d
             return self.full_local_dir(model_id)
-        return self.local_dir(model_id)
+        found = self._onnx_ready_dir(spec)
+        return found if found else self.local_dir(model_id)
 
     def ensure_dir(self, model_id: str) -> Path:
         """返回本地模型目录；若缺失则同步下载（无进度回调）。"""
@@ -199,13 +242,16 @@ class ModelManager:
         if "error" in result:
             raise RuntimeError(f"download failed for {model_id}: {result['error']!r}")
 
-        self._fetch_aux_files(spec, target)
-        self._make_local_copies(spec, target)
+        dest = Path(str(result["path"])) if result.get("path") else target
+        if not self._onnx_dir_complete(spec, dest):
+            dest = self._onnx_ready_dir(spec) or dest
+        self._fetch_aux_files(spec, dest)
+        self._make_local_copies(spec, dest)
 
         if progress:
-            got = _dir_size(target)
+            got = _dir_size(dest)
             progress(100.0, round(got / 1024 / 1024, 1), spec.size_mb)
-        return target
+        return dest if self._onnx_dir_complete(spec, dest) else self.resolve_dir(model_id)
 
     def _download_full_locked(self, spec, target, progress):  # noqa: ANN001
         from modelscope.hub.snapshot_download import snapshot_download  # torch-free

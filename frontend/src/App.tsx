@@ -170,7 +170,29 @@ function ResultsPanel({ job }: { job: Job }) {
         <SectionLabel>TRANSCRIPT · {job.segments.length} 段</SectionLabel>
         <Space wrap>
           {EXPORT_FORMATS.map((fmt) => (
-            <Button key={fmt} size="small" variant="outlined" href={exportUrl(job.id, fmt)} download>
+            <Button
+              key={fmt}
+              size="small"
+              variant="outlined"
+              href={exportUrl(job.id, fmt)}
+              download
+              onClick={() => {
+                // #region agent log
+                fetch("http://127.0.0.1:7891/ingest/11911342-78dd-4bc8-b944-56d1fe6ed55e", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ed1b5f" },
+                  body: JSON.stringify({
+                    sessionId: "ed1b5f",
+                    hypothesisId: "C",
+                    location: "App.tsx:export-button",
+                    message: "export click",
+                    data: { jobId: job.id, filename: job.filename, fmt, href: exportUrl(job.id, fmt) },
+                    timestamp: Date.now(),
+                  }),
+                }).catch(() => {});
+                // #endregion
+              }}
+            >
               .{fmt}
             </Button>
           ))}

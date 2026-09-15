@@ -6,6 +6,7 @@ import shutil
 import threading
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
@@ -22,6 +23,17 @@ router = APIRouter(prefix="/api")
 
 def _err(code: str, message: str, status: int = 400) -> JSONResponse:
     return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+
+
+def _content_disposition(filename: str) -> str:
+    """RFC 6266 / 5987：ASCII fallback + UTF-8 filename*，避免非 Latin-1 文件名炸 HTTP 头。"""
+    # 去掉路径分隔与引号，防止注入/拆坏 header
+    name = Path(filename).name.replace('"', "").replace("\\", "_").replace("/", "_")
+    if not name:
+        name = "subtitle"
+    ascii_name = "".join(ch if ch.isascii() and ch not in '<>:|?*\r\n' else "_" for ch in name)
+    ascii_name = ascii_name.strip(" ._") or "subtitle"
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
 
 
 # ---- health ----
@@ -125,6 +137,14 @@ async def create_job(
         punctuation=punctuation if punctuation in {"auto", "on", "off"} else "auto",
     )
     job = mgr.create(safe_name, dest, options)
+    # #region agent log
+    try:
+        import json, time
+        with open(r"c:\_\_P\funasr-subtitle\debug-ed1b5f.log", "a", encoding="utf-8") as _df:
+            _df.write(json.dumps({"sessionId": "ed1b5f", "hypothesisId": "D", "location": "routes.py:create_job", "message": "job created", "data": {"job_id": job.id, "safe_name": safe_name, "orig_filename": file.filename, "ascii_ok": safe_name.isascii()}, "timestamp": int(time.time() * 1000)}, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # #endregion
     return {"job_id": job.id}
 
 
@@ -147,8 +167,35 @@ async def export_job(job_id: str, request: Request, format: str = "srt"):
     body = export_segments(job.segments, fmt)
     mime, ext = EXPORT_FORMATS[fmt]
     stem = Path(job.filename).stem or "subtitle"
-    headers = {"Content-Disposition": f'attachment; filename="{stem}.{ext}"'}
-    return Response(content=body, media_type=mime, headers=headers)
+    header_val = _content_disposition(f"{stem}.{ext}")
+    # #region agent log
+    try:
+        import json, time
+        latin1_ok = True
+        latin1_err = ""
+        try:
+            header_val.encode("latin-1")
+        except UnicodeEncodeError as e:
+            latin1_ok = False
+            latin1_err = str(e)
+        with open(r"c:\_\_P\funasr-subtitle\debug-ed1b5f.log", "a", encoding="utf-8") as _df:
+            _df.write(json.dumps({"sessionId": "ed1b5f", "runId": "post-fix", "hypothesisId": "A", "location": "routes.py:export_job", "message": "export header", "data": {"job_id": job_id, "filename": job.filename, "stem": stem, "ext": ext, "header_val": header_val, "latin1_ok": latin1_ok, "latin1_err": latin1_err, "ascii_ok": stem.isascii()}, "timestamp": int(time.time() * 1000)}, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+    # #endregion
+    try:
+        headers = {"Content-Disposition": header_val}
+        return Response(content=body, media_type=mime, headers=headers)
+    except Exception as e:
+        # #region agent log
+        try:
+            import json, time
+            with open(r"c:\_\_P\funasr-subtitle\debug-ed1b5f.log", "a", encoding="utf-8") as _df:
+                _df.write(json.dumps({"sessionId": "ed1b5f", "runId": "post-fix", "hypothesisId": "A", "location": "routes.py:export_job:response", "message": "Response failed", "data": {"err_type": type(e).__name__, "err": str(e)}, "timestamp": int(time.time() * 1000)}, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        # #endregion
+        raise
 
 
 @router.post("/jobs/{job_id}/cancel")
