@@ -65,7 +65,10 @@ PARAFORMER_ZH_HOTWORD = ModelSpec(
     engine="contextual",
     supports_hotwords=True,
     local_copies=(("model_eb.onnx", "model_eb_quant.onnx"),),
-    full_model="iic/speech_seaco_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    # 注意：官方 id 是 speech_seaco_paraformer_large_（seaco/paraformer 之间是下划线）。
+    # 写错成 seaco-paraformer 时 modelscope 报 "record not found"，而 funasr 会把下载
+    # 失败吞掉、拿原始 id 去查注册表，最终抛出误导性的 "model ... is not registered"。
+    full_model="iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
 )
 
 # ---- 辅助模块（共享，不在用户「模型」下拉里单列） ----
