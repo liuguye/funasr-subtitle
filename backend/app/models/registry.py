@@ -2,7 +2,7 @@
 
 modelscope 仓库 id 在 §17 验证中确认可达且含 .onnx。
 - VAD / punc 是所有 ASR 模型共享的辅助模块。
-- 面向用户的「模型」目前是 ASR 模型（默认 SenseVoiceSmall）。
+- 面向用户的「模型」目前是 ASR 模型（默认 Paraformer-zh）。
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def resolve_full_repo(spec: ModelSpec) -> str:
 # ---- ASR（面向用户可选） ----
 SENSEVOICE = ModelSpec(
     id="iic/SenseVoiceSmall-onnx",
-    name="SenseVoiceSmall（多语言·默认·快）",
+    name="SenseVoiceSmall（多语言·快）",
     task="asr",
     size_mb=235.0,
     repo="iic/SenseVoiceSmall-onnx",
@@ -71,7 +71,7 @@ SENSEVOICE = ModelSpec(
 )
 PARAFORMER_ZH = ModelSpec(
     id="iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx",
-    name="Paraformer-zh（中文高精度）",
+    name="Paraformer-zh（中文高精度·默认）",
     task="asr",
     size_mb=240.0,
     repo="iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx",
@@ -120,7 +120,7 @@ PUNC_MODEL = ModelSpec(
     repo="iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx",
 )
 
-DEFAULT_MODEL_ID = SENSEVOICE.id
+DEFAULT_MODEL_ID = PARAFORMER_ZH.id
 
 # 面向用户的 ASR 模型目录（UI 下拉）
 ASR_MODELS: list[ModelSpec] = [SENSEVOICE, PARAFORMER_ZH, PARAFORMER_ZH_HOTWORD]

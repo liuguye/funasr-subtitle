@@ -236,7 +236,7 @@ export default function App() {
 
   const [file, setFile] = useState<File | null>(null);
   const [modelId, setModelId] = useState<string>("");
-  const [language, setLanguage] = useState<Language>("auto");
+  const [language, setLanguage] = useState<Language>("zh");
   const [diarization, setDiarization] = useState(false);
   const [hotwords, setHotwords] = useState("");
   const [maxChars, setMaxChars] = useState(30);
