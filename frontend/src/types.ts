@@ -1,4 +1,4 @@
-// Mirror of the backend data model (§8 / API contract).
+// Mirror of the backend data model.
 
 export type JobStatus =
   | "queued"
@@ -65,7 +65,7 @@ export type JobEvent =
   | { type: "progress"; stage: Stage; percent: number }
   | { type: "partial"; segment: Segment }
   | { type: "done"; job: Job }
-  | { type: "error"; code: string; message: string };
+  | { type: "error"; code: string; message: string; detail?: string };
 
 export type ModelEvent =
   | { type: "download"; percent: number; downloaded_mb: number; total_mb: number }

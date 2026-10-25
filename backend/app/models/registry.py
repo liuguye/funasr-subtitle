@@ -1,6 +1,6 @@
-"""模型目录（§9）。
+"""模型目录。
 
-modelscope 仓库 id 在 §17 验证中确认可达且含 .onnx。
+modelscope 仓库 id 已确认可达且含 .onnx（见 engine/README.md）。
 - VAD / punc 是所有 ASR 模型共享的辅助模块。
 - 面向用户的「模型」目前是 ASR 模型（默认 Paraformer-zh）。
 """
@@ -17,16 +17,16 @@ class ModelSpec:
     size_mb: float  # 粗略下载体积，用于 UI 展示
     repo: str  # modelscope 仓库 id（snapshot_download 用）
     # 主仓库缺、需从别处补的文件：((文件名, 来源仓库), ...)
-    # §17：SenseVoiceSmall-onnx 仓库不含 bpe 词表，需从 pt 仓库补一份。
+    # SenseVoiceSmall-onnx 仓库不含 bpe 词表，需从 pt 仓库补一份（见 engine/README.md 1.）。
     aux_files: tuple[tuple[str, str], ...] = ()
-    # ASR 输出是否已含标点（含则跳过 ct-punc，§9/§17 验证：SenseVoice withitn 自带标点）
+    # ASR 输出是否已含标点（含则跳过 ct-punc，SenseVoice withitn 自带标点，见 engine/README.md）
     builtin_punc: bool = False
     # 引擎解码路径：sensevoice(CTC numpy) | paraformer | contextual(支持热词)
     engine: str = "sensevoice"
     # 是否支持热词（仅 contextual paraformer）
     supports_hotwords: bool = False
     # 下载后在模型目录内复制/改名的文件：((源文件名, 目标文件名), ...)
-    # §M8：contextual 仓库只有 model_eb.onnx，funasr 量化路径要 model_eb_quant.onnx。
+    # contextual 仓库只有 model_eb.onnx，funasr 量化路径要 model_eb_quant.onnx。
     local_copies: tuple[tuple[str, str], ...] = ()
     # 完整 funasr（torch）后端用的模型 id（AutoModel model=...）。
     # 与 onnx repo 不同：完整后端用 pt 模型。空则该模型不支持 full 后端。
@@ -97,10 +97,13 @@ PARAFORMER_ZH_HOTWORD = ModelSpec(
     engine="contextual",
     supports_hotwords=True,
     local_copies=(("model_eb.onnx", "model_eb_quant.onnx"),),
-    full_model="iic/speech_seaco_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-    full_repo="iic/speech_seaco_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    # 注意：官方 id 是 speech_seaco_paraformer_large_（seaco/paraformer 之间是下划线）。
+    # 写错成 seaco-paraformer 时 modelscope 报 "record not found"，而 funasr 会把下载
+    # 失败吞掉、拿原始 id 去查注册表，最终抛出误导性的 "model ... is not registered"。
+    full_model="iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    full_repo="iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
     full_repo_alts=(
-        "iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+        "iic/speech_seaco_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
     ),
 )
 

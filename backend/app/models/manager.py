@@ -12,8 +12,9 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
+from typing import ClassVar
 
 from ..config import models_dir
 from .registry import REGISTRY, ModelSpec, get_model, resolve_full_repo
@@ -45,9 +46,9 @@ class ModelManager:
     # 类级、跨实例共享的「按 model_id」下载锁：API 与 worker 各自持有不同的
     # ModelManager 实例却指向同一缓存目录，必须共享锁，避免并发下载互踩。
     _locks_guard = threading.Lock()
-    _locks: "dict[str, threading.Lock]" = {}
+    _locks: ClassVar[dict[str, threading.Lock]] = {}
 
-    def __init__(self, root: Optional[Path] = None) -> None:
+    def __init__(self, root: Path | None = None) -> None:
         self.root = root or models_dir()
 
     @classmethod
@@ -187,7 +188,7 @@ class ModelManager:
         return self.resolve_dir(model_id)
 
     # ---- 下载 ----
-    def download(self, model_id: str, progress: Optional[DownloadProgress] = None) -> Path:
+    def download(self, model_id: str, progress: DownloadProgress | None = None) -> Path:
         """同步下载。progress(percent, downloaded_mb, total_mb)。
 
         modelscope 自身的进度回调不稳定，这里用「后台线程下载 + 轮询目录大小」估算进度。

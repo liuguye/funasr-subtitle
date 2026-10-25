@@ -1,7 +1,6 @@
 """REST + WebSocket 路由（§7）。"""
 from __future__ import annotations
 
-import asyncio
 import shutil
 import threading
 import uuid
@@ -21,8 +20,11 @@ from ..subtitle import EXPORT_FORMATS, export_segments
 router = APIRouter(prefix="/api")
 
 
-def _err(code: str, message: str, status: int = 400) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+def _err(code: str, message: str, status: int = 400, detail: str | None = None) -> JSONResponse:
+    body = {"code": code, "message": message}
+    if detail:
+        body["detail"] = detail
+    return JSONResponse(status_code=status, content={"error": body})
 
 
 def _content_disposition(filename: str) -> str:
@@ -76,7 +78,7 @@ async def download_model(model_id: str, request: Request):
     try:
         get_model(model_id)
     except KeyError:
-        return _err("unknown_model", f"no such model: {model_id}", 404)
+        return _err("unknown_model", "没有这个模型。", 404, detail=model_id)
 
     mgr: ModelManager = request.app.state.models
     jobs = request.app.state.jobs
@@ -93,7 +95,7 @@ async def download_model(model_id: str, request: Request):
             mgr.download(model_id, progress=progress)
             ev = {"type": "done"}
         except Exception as e:  # noqa: BLE001
-            ev = {"type": "error", "code": "download_failed", "message": str(e)}
+            ev = {"type": "error", "code": "download_failed", "message": "下载失败，点重试", "detail": str(e)}
         jobs.model_status[model_id] = ev  # 记录终态，供 WS 迟到订阅者补发
         broker.publish(f"model:{model_id}", ev)
 
@@ -102,6 +104,8 @@ async def download_model(model_id: str, request: Request):
 
 
 # ---- jobs ----
+# File()/Form() 写在参数默认值里是 FastAPI 的规定写法（依赖注入靠读签名），
+# 不能改成在函数体内取值——那样 FastAPI 就识别不出这是表单字段了。
 @router.post("/jobs")
 async def create_job(
     request: Request,
@@ -133,10 +137,10 @@ async def create_job(
                 f.write(chunk)
     except Exception:  # noqa: BLE001  写盘失败/客户端中断 -> 清理半成品，不留垃圾
         shutil.rmtree(dest_dir, ignore_errors=True)
-        return _err("upload_failed", "上传失败，请重试", 400)
+        return _err("upload_failed", "文件没传上后台，请重新拖一次", 400)
     if too_large:
         shutil.rmtree(dest_dir, ignore_errors=True)
-        return _err("file_too_large", f"文件超过上限 {MAX_UPLOAD_MB} MB", 413)
+        return _err("file_too_large", f"文件太大（上限 {MAX_UPLOAD_MB} MB），先切成小段再试", 413)
 
     options = JobOptions(
         model_id=model_id or DEFAULT_MODEL_ID,
@@ -163,7 +167,7 @@ async def create_job(
 async def get_job(job_id: str, request: Request):
     job = request.app.state.jobs.get(job_id)
     if not job:
-        return _err("not_found", f"no such job: {job_id}", 404)
+        return _err("not_found", "任务不存在，可能后台已经重启。", 404, detail=job_id)
     return job.model_dump(mode="json")
 
 
@@ -171,10 +175,10 @@ async def get_job(job_id: str, request: Request):
 async def export_job(job_id: str, request: Request, format: str = "srt"):
     job = request.app.state.jobs.get(job_id)
     if not job:
-        return _err("not_found", f"no such job: {job_id}", 404)
+        return _err("not_found", "任务不存在，可能后台已经重启。", 404, detail=job_id)
     fmt = format.lower()
     if fmt not in EXPORT_FORMATS:
-        return _err("bad_format", f"unsupported format: {format}", 400)
+        return _err("bad_format", "不支持这种格式。", 400, detail=format)
     body = export_segments(job.segments, fmt)
     mime, ext = EXPORT_FORMATS[fmt]
     stem = Path(job.filename).stem or "subtitle"
@@ -213,7 +217,7 @@ async def export_job(job_id: str, request: Request, format: str = "srt"):
 async def cancel_job(job_id: str, request: Request):
     ok = request.app.state.jobs.cancel(job_id)
     if not ok:
-        return _err("not_found", f"no such job: {job_id}", 404)
+        return _err("not_found", "任务不存在，可能已经结束了。", 404, detail=job_id)
     return {"ok": True}
 
 
@@ -242,7 +246,8 @@ def register_ws(app) -> None:
                     e = job.error
                     await ws.send_json({"type": "error",
                                         "code": e.code if e else "error",
-                                        "message": e.message if e else ""})
+                                        "message": e.message if e else "",
+                                        "detail": e.detail if e else None})
             while True:
                 event = await q.get()
                 await ws.send_json(event)

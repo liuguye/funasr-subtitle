@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -27,9 +26,9 @@ from ..subtitle import (
     strip_terminal_punct,
 )
 from ..subtitle.segmentation import _TERMINALS
+from .base import EngineOptions, ProgressCallback
 
 _CJK_RE = re.compile(r"[一-鿿぀-ヿ가-힯]")
-from .base import EngineOptions, ProgressCallback
 
 _SPECIAL = re.compile(r"<\|[^|>]*\|>")
 _VALID_LANGS = {"auto", "zh", "yue", "en", "ja", "ko"}
@@ -39,7 +38,7 @@ def _merge_to_terminal(raw: list[list]) -> list[list]:
     """合并相邻子句直到句末标点，得到自然语句（start=首句起，end=末句止）。
     换说话人时先收尾，不跨说话人合并。"""
     out: list[list] = []
-    cur: Optional[list] = None
+    cur: list | None = None
     for st, en, tx, spk in raw:
         if cur is not None and cur[3] != spk:  # 换人 -> 先收尾
             out.append(cur)
@@ -60,6 +59,37 @@ def _merge_to_terminal(raw: list[list]) -> list[list]:
     if cur is not None:
         out.append(cur)
     return out
+
+
+def _nospace(s: str) -> str:
+    """去掉所有空白，用于「覆盖是否完整」的比较（忽略空格差异）。"""
+    return "".join(s.split())
+
+
+# 「骨架字符」= 字母 / 数字 / 中日韩，去掉标点与空白。
+# ct-punc 会给 sentence_info 补句号，而 r0["text"] 不一定同步，因此比对覆盖度时必须
+# 忽略标点，否则「上游补了个句号」会被误判成「多了内容」。
+_SKELETON_RE = re.compile(r"[^\W_]", re.UNICODE)
+
+
+def _skeleton(s: str) -> str:
+    """只保留实义字符，用于跨标点比较文本覆盖度。"""
+    return "".join(_SKELETON_RE.findall(s))
+
+
+def _tail_after(text: str, covered: int) -> str:
+    """取 text 中「前 covered 个骨架字符之后」的剩余部分。
+
+    covered 通常小于骨架长度（上游丢了句尾），此时返回丢掉的那截。
+    若 covered 已覆盖全部骨架字符则返回空串。
+    """
+    seen = 0
+    for i, ch in enumerate(text):
+        if _SKELETON_RE.match(ch):
+            if seen == covered:
+                return text[i:]
+            seen += 1
+    return ""
 
 
 class FunasrFullEngine:
@@ -114,8 +144,8 @@ class FunasrFullEngine:
         wav: np.ndarray,
         sample_rate: int,
         options: JobOptions,
-        progress: Optional[ProgressCallback] = None,
-        cancel: "Optional[object]" = None,
+        progress: ProgressCallback | None = None,
+        cancel: object | None = None,
     ) -> list[Segment]:
         if not self._loaded:
             self.load()
@@ -151,6 +181,39 @@ class FunasrFullEngine:
                     s.text = strip_terminal_punct(s.text)
         return segs
 
+    @staticmethod
+    def _recover_dropped_tail(raw: list[list], r0, total_ms: int) -> list[list]:
+        """补回 funasr 在句级时间戳里丢掉的无标点句尾（上游 #3754，至今未发版）。
+
+        funasr 的 `timestamp_sentence()` 只在遇到终止标点时才 flush 一句，于是**末尾那段
+        没有终止标点的文本会被整段丢弃**——说话人说一半被打断、录音到点结束都很常见，
+        表现为字幕尾部凭空少一截，而 `r0["text"]` 里其实还在。
+
+        这里比对「sentence_info 拼出来的文本」和「整段文本」的实义字符（忽略标点，因为
+        ct-punc 会给前者补句号），确认确实是前缀关系（丢的是尾巴而不是中间），再把剩下
+        那截按「上一条结束 -> 音频结束」的时间范围补回去，沿用上一条的说话人标签。
+        时间戳刻意不从 `timestamp` 对齐：实测该数组按「非标点 token」给，和字符数对不上，
+        硬对齐反而更容易错。宁可时间范围略宽，也不能把字丢了。
+        对不上的情况一律原样返回，不猜、不动原有分段。
+        """
+        if not isinstance(r0, dict) or not raw:
+            return raw
+        full_text = _SPECIAL.sub("", str(r0.get("text", ""))).strip()
+        joined = "".join(t for _st, _en, t, _spk in raw)
+        covered, total = len(_skeleton(joined)), len(_skeleton(full_text))
+        if total <= covered:
+            return raw  # 覆盖完整，没有尾巴
+        if not _skeleton(full_text).startswith(_skeleton(joined)):
+            return raw  # 不是前缀关系（丢的不是尾巴）-> 交给原有兜底，别瞎猜
+        tail = _tail_after(full_text, covered)
+        if not _skeleton(tail):
+            return raw
+        last_end = int(raw[-1][1])
+        if last_end >= total_ms:  # 时间上没地方放，硬塞会制造乱序
+            return raw
+        raw.append([last_end, total_ms, tail, raw[-1][3]])
+        return raw
+
     def _to_segments(self, res, options: JobOptions, total_ms: int) -> list[Segment]:
         if not res:
             return []
@@ -168,6 +231,7 @@ class FunasrFullEngine:
                     # `or 0` 兼容 start/end 缺失或为 None（int(None) 会抛 TypeError）
                     raw.append([int(s.get("start") or 0), int(s.get("end") or 0), text, s.get("spk")])
             if raw:
+                raw = self._recover_dropped_tail(raw, r0, total_ms)
                 if not (max_chars and max_chars > 0):
                     raw = _merge_to_terminal(raw)
                 return [
