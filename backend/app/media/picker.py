@@ -83,6 +83,7 @@ $dlg.RestoreDirectory = $true
 # 云盘占位 / 重解析点（山鸭 Integrated 等）打开存在性检查时，选完经常拿不到路径。
 $dlg.CheckFileExists = $false
 $dlg.ValidateNames = $false
+$dlg.DereferenceLinks = $true
 """
         chosen = r"$dlg.FileNames"
     return f"""
@@ -199,17 +200,29 @@ def _finish(stdout: str, returncode: int, stderr: str) -> list[str]:
 
 
 def _open_windows(mode: str) -> list[str]:
+    """脚本写 UTF-8 BOM 的 .ps1 再 -File 执行，避免中文 Windows 管道编码丢结果。"""
     fd, name = tempfile.mkstemp(prefix="fs-pick-", suffix=".txt")
     os.close(fd)
     result = Path(name)
+    ps1 = result.with_suffix(".ps1")
     try:
+        # BOM：powershell -File 在中文系统上按 Unicode 读含「音视频」等中文的脚本
+        ps1.write_text(_windows_script(mode, str(result)), encoding="utf-8-sig")
         proc = _run(
-            ["powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", "-"],
-            _windows_script(mode, str(result)),
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-STA",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(ps1),
+            ],
         )
         return paths_from_dialog(read_picker_result(result), proc.stdout, proc.returncode, proc.stderr)
     finally:
         result.unlink(missing_ok=True)
+        ps1.unlink(missing_ok=True)
 
 
 def _open_macos(mode: str) -> list[str]:
