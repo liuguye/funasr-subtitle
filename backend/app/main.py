@@ -2,13 +2,13 @@
 
 开发：uvicorn app.main:app --reload --port 8765
 发布：冻结出的 funasr-subtitle.exe 调用 run()（找空闲端口 -> 起服务 -> 开浏览器 -> 托盘）。
+换端口见 app.runtime.listen（--port / FUNASR_SUBTITLE_PORT）。
 """
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import os
-import socket
 import threading
 import webbrowser
 from contextlib import asynccontextmanager
@@ -20,9 +20,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .api.batch import router as batch_router
 from .api.routes import register_ws, router
-from .config import DEFAULT_PORT, bundle_dir, is_frozen
-from .jobs import JobManager
+from .config import bundle_dir, is_frozen
+from .jobs.batch import BatchJobManager
 from .models import ModelManager
 
 
@@ -52,7 +53,7 @@ async def _lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="funasr-subtitle", version=__version__, lifespan=_lifespan)
 
-    app.state.jobs = JobManager()
+    app.state.jobs = BatchJobManager()
     app.state.models = ModelManager()
     app.state._server = None
     app.state._shutdown = threading.Event()
@@ -86,7 +87,8 @@ def create_app() -> FastAPI:
                                                "message": "后台出错了，请重试；还不行就重启程序。",
                                                "detail": str(exc)}})
 
-    # 路由
+    # 路由。批量/本机路径在 batch_router，原有 /api/jobs 仍在 router。
+    app.include_router(batch_router)
     app.include_router(router)
     register_ws(app)
 
@@ -102,20 +104,6 @@ app = create_app()
 
 
 # ---- 便携启动器（frozen funasr-subtitle.exe 入口）----
-
-def _find_free_port(preferred: int = DEFAULT_PORT) -> int:
-    for port in range(preferred, preferred + 50):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            try:
-                s.bind(("127.0.0.1", port))
-                return port
-            except OSError:
-                continue
-    # 兜底：让系统分配
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
 
 def _start_tray(url: str, shutdown) -> None:  # noqa: ANN001
     """系统托盘（可选，§4）。缺 pystray/pillow 时静默跳过。"""
@@ -143,31 +131,11 @@ def _start_tray(url: str, shutdown) -> None:  # noqa: ANN001
     threading.Thread(target=icon.run, daemon=True).start()
 
 
-def run() -> None:
-    import uvicorn
+def run(argv: list[str] | None = None) -> None:
+    """便携入口。端口和主机在 app.runtime.listen，不写在这里。"""
+    from .runtime.listen import run_server
 
-    port = _find_free_port()
-    url = f"http://127.0.0.1:{port}"
-
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
-    server = uvicorn.Server(config)
-    app.state._server = server
-
-    _start_tray(url, app.state.request_shutdown)
-
-    # 服务起来后开浏览器
-    def _open_browser() -> None:
-        import time
-        for _ in range(40):
-            try:
-                with socket.create_connection(("127.0.0.1", port), timeout=0.25):
-                    break
-            except OSError:
-                time.sleep(0.1)
-        webbrowser.open(url)
-
-    threading.Thread(target=_open_browser, daemon=True).start()
-    server.run()
+    run_server(app, argv, start_tray=_start_tray)
 
 
 if __name__ == "__main__":

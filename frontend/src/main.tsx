@@ -5,14 +5,15 @@ import zhCN from "antd/locale/zh_CN";
 import "@fontsource/space-mono/400.css";
 import "@fontsource/space-mono/700.css";
 import "./studio.css";
-import App from "./App";
+import "./studio/studio-layout.css";
+import StudioPage from "./studio/StudioPage";
 import { studioTheme } from "./theme";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ConfigProvider theme={studioTheme} locale={zhCN}>
       <AntApp>
-        <App />
+        <StudioPage />
       </AntApp>
     </ConfigProvider>
   </React.StrictMode>,

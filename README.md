@@ -49,7 +49,8 @@
 - 🌐 **多语言** — 中文 / 粤语 / 英语 / 日语 / 韩语，可自动识别或手动指定。
 - ✂️ **专业字幕切分** — 按标点 / 停顿切句；每行「显示宽度」可调（中日韩字符算 1、拉丁/数字算 0.5，默认 30 ≈ 中文 30 字 / 英文 ~60 字，上限 100，`0` = 不限制）+ 单条 ≤ 7s，断点取 句末 > 子句 > 词边界，不拆英文词；最终 cue 严格单调不重叠。
 - 🔤 **标点模式可选** — `自动`（默认：中文等自带标点的语言加句末标点；**英文按停顿切、不强加**——英文模型标点常不准，错位句号会把一句切碎）/ `加标点` / `不加标点`。
-- 📝 **多格式导出** — SRT / VTT / TXT / JSON，或一键「复制全文」。
+- 📝 **多格式导出** — SRT / VTT / TXT / JSON，或一键「复制全文」。勾选的格式还会写到源文件旁边（`视频.mp4` → `视频.srt`），前提是任务带了本机绝对路径。
+- 📥 **批量队列** — 一次加入多个文件，按顺序转写，每条显示等待 / 转写中 / 完成 / 失败，可以移除或调整顺序。
 - 👥 **说话人分离（可选）** — 用 cam++ 标注每段说话人，导出含 `[spk0]`/`[spk1]`…；**仅完整版 + Paraformer 模型**可用（完整版有 N 卡自动用 GPU、无卡回退 CPU）；onnx 版与 SenseVoice 不支持。
 
 ## 📦 下载
@@ -74,9 +75,38 @@
 
 1. 双击 `funasr-subtitle.exe`，浏览器自动打开。
 2. 首次按页面提示下载默认模型（之后离线）。
-3. 拖入音频 / 视频 → 选语言 / 模型（可填热词、调每行最多几个字、选标点模式）→ 点「开始转写」。
-4. 导出 SRT / VTT / TXT / JSON 或「复制全文」；`.srt` 可直接导入 [subtitle-translator](https://tools.newzone.top/zh/subtitle-translator) 翻译。
+3. 点「选择文件」或「选择文件夹」。页面会弹出**系统文件窗口**（不是浏览器那个选文件框），可以一次选多个音视频，也可以把文件直接拖进页面。选语言 / 模型（可填热词、调每行最多几个字、选标点模式）→ 点「开始转写」。队列里的文件会一个接一个跑。
+4. 用系统窗口选中的文件带有本机路径，勾选的字幕（默认 `.srt`）会写到源文件同一目录，名字用源文件的主名，例如「视频.mp4」旁边出现「视频.srt」。页面里仍可下载 SRT / VTT / TXT / JSON 或「复制全文」。若把文件拖进浏览器、而浏览器没带上路径，队列里会提示再点一次「选择文件」——不用手填绝对路径。`.srt` 可导入 [subtitle-translator](https://tools.newzone.top/zh/subtitle-translator) 翻译。
 5. 退出：页面右上角「停止服务」或右下角托盘图标。
+
+### 换端口
+
+默认 `8765`。要和别的程序或其他一份 funasr-subtitle 错开：
+
+```bat
+REM 便携包 / python -m app.main：被占用时会从该端口往后试 50 个
+set FUNASR_SUBTITLE_PORT=9000
+funasr-subtitle.exe
+
+REM 钉死端口，被占用就退出，不顺延
+funasr-subtitle.exe --port 9000 --strict-port
+```
+
+开发时**页面默认端口是 5180**，不用 Vite 常见的 5173，免得和本机其他前端服务撞车。仍可用 `VITE_PORT` 改成别的端口。
+
+```powershell
+# 开发：第一个参数是后台端口，Vite 代理会跟着走。页面端口用 VITE_PORT（默认 5180）
+start-dev.bat 9000
+# 或同时改页面端口
+$env:FUNASR_SUBTITLE_PORT = "9000"; $env:VITE_PORT = "5190"; .\start-dev.bat
+```
+
+```bash
+./start-dev.sh 9000
+VITE_PORT=5190 ./start-dev.sh 9000
+```
+
+开发时的 uvicorn **不会**在端口被占时自动换端口。便携入口（`funasr-subtitle.exe` / `python -m app.main`）默认会顺延，除非加上 `--strict-port` 或 `FUNASR_SUBTITLE_STRICT_PORT=1`。页面右上角的 `:端口` 是当前网页的端口，用来区分开着的多份页面。
 
 ## ⚙️ 工作原理
 
@@ -103,11 +133,14 @@
 
 **环境**：Windows · Python 3.11（`pyproject.toml` 钉的是 `>=3.11,<3.12`）· Node 20+（CI 跑的是 24，本地也建议 24）
 
-根目录双击 `start-dev.bat`，会在同一窗口启动后端（8765）和前端；`Ctrl+C` 结束两者。
+根目录双击 `start-dev.bat`，会在同一窗口启动后端（默认 8765）和前端（默认 **5180**）；`Ctrl+C` 结束两者。换端口见上文 [换端口](#换端口)。macOS / Linux 可用 `./start-dev.sh`。
 
 ```bat
 start-dev.bat
+start-dev.bat 9000
 ```
+
+界面入口是 `frontend/src/studio/StudioPage.tsx`（批量队列和新布局）。`frontend/src/App.tsx` 保留给上游合并，改页面请改 `studio/` 目录。
 
 也可手动分别启动：
 
@@ -117,16 +150,16 @@ start-dev.bat
 py -3.11 -m venv backend\.venv
 backend\.venv\Scripts\python -m pip install -e "backend[dev,onnx]"
 
-# 起后端
+# 起后端。换端口就改 --port，并让下面的 VITE_BACKEND_PORT 用同一个值
 cd backend; ..\backend\.venv\Scripts\python -m uvicorn app.main:app --reload --port 8765
 
-# 前端
+# 前端。后台不是 8765 时先设 $env:VITE_BACKEND_PORT="9000"
 cd frontend; npm ci; npm run dev
 ```
 
 > **关于 DirectML 显卡加速**：`onnxruntime-directml` 和 `funasr-onnx` 依赖的纯 CPU 版
 > `onnxruntime` 提供同名包、会互相覆盖，pip 保证不了 DirectML 胜出；而且实测 DirectML
-> 对量化 ONNX 模型反而**慢 ~2.8×**，所以前端已隐藏该开关（`App.tsx` 里 `useGpu = false`），
+> 对量化 ONNX 模型反而**慢 ~2.8×**，所以前端已隐藏该开关（`StudioPage.tsx` 里 `useGpu = false`），
 > 依赖里也就没列它。真想手动试的话，装完 `[onnx]` 后再补这一步并确认 provider 出现：
 >
 > ```powershell
@@ -175,7 +208,11 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1 -Variant full
 | ------------------------------- | -------------------------------- | -------------------------------------------------- |
 | `FUNASR_SUBTITLE_BACKEND`       | 烘焙值                           | 推理后端 `onnx` / `full`                           |
 | `FUNASR_SUBTITLE_FORCE_CPU`     | 0                                | 设 `1` 强制完整版用 CPU（有卡也不用，排障 / 对比） |
-| `FUNASR_SUBTITLE_PORT`          | 8765                             | 服务端口（被占用则自增扫描）                       |
+| `FUNASR_SUBTITLE_PORT`          | 8765                             | 服务端口。便携入口被占用则自增扫描；`--port` 同样有效 |
+| `FUNASR_SUBTITLE_HOST`          | 127.0.0.1                        | 监听地址。`--host` 同样有效                         |
+| `FUNASR_SUBTITLE_STRICT_PORT`   | 关                               | 设 `1` 或加 `--strict-port`：端口被占用直接退出     |
+| `VITE_PORT`                     | 5180                             | 仅开发：Vite 页面端口（避开 5173）                  |
+| `VITE_BACKEND_PORT`             | 同 `FUNASR_SUBTITLE_PORT`        | 仅开发：Vite 把 `/api` 和 `/ws` 代理到这个后台端口  |
 | `FUNASR_SUBTITLE_MAX_CHARS`     | 30                               | 每行最大显示宽度默认值（0=不限制）                 |
 | `FUNASR_SUBTITLE_MAX_CUE_MS`    | 7000                             | 单条字幕最长时长（毫秒）                           |
 | `FUNASR_SUBTITLE_MAX_UPLOAD_MB` | 0                                | 上传大小上限（MB，0=不限）                         |
