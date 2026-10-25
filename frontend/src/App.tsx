@@ -1,3 +1,6 @@
+// 线上界面在 ./studio/StudioPage.tsx（新布局、批量队列、同目录字幕）。
+// 这个文件保留给上游合并，避免把整页改写进同一处。改界面请去 studio/。
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App as AntApp,
@@ -245,7 +248,6 @@ function ResultsPanel({ job }: { job: Job }) {
 export default function App() {
   const { message } = AntApp.useApp();
   const [models, setModels] = useState<ModelInfo[]>([]);
-  const [defaultId, setDefaultId] = useState<string>("");
   const [modelsError, setModelsError] = useState<string | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -276,7 +278,6 @@ export default function App() {
     try {
       const res = await getModels();
       setModels(res.models);
-      setDefaultId(res.default_id);
       setModelId((cur) => cur || res.default_id);
       if (res.compute) setCompute(res.compute);
       if (res.backend) setBackendKind(res.backend);

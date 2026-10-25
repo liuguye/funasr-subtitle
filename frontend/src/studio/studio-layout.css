@@ -1,0 +1,246 @@
+/* 在 studio.css 的录音棚色上加一层控制台布局。不改原色板，方便跟上游的主题合并。 */
+
+.studio-root {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  padding: 28px 20px 88px;
+}
+
+.shell {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.transport {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.transport-id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.transport-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.port-chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--amber-soft);
+  border: 1px solid #5a4a2a;
+  background: rgba(232, 163, 61, 0.08);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.meters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meter {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.meter strong {
+  color: #ece4d5;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.meter.run strong { color: var(--amber-soft); }
+.meter.bad strong { color: #f0b2ac; }
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.82fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.workspace > * { min-width: 0; }
+
+.deck-card.ant-card {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--border);
+  background:
+    linear-gradient(180deg, rgba(232, 163, 61, 0.075), transparent 64px),
+    #201c16;
+  box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.9);
+}
+
+.deck-card.ant-card::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  opacity: 0.9;
+}
+
+.bay-drop.ant-upload.ant-upload-drag {
+  min-height: 132px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(232, 163, 61, 0.08), transparent 60%);
+}
+
+.path-add {
+  margin-top: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 8px 12px 12px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.path-add summary {
+  cursor: pointer;
+  color: var(--amber-soft);
+  font-size: 13px;
+  list-style: none;
+}
+
+.path-add summary::-webkit-details-marker { display: none; }
+
+.q-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.q-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  width: 100%;
+}
+
+.q-row:hover { border-color: #5a4a2a; }
+
+.q-row.picked {
+  border-color: var(--amber);
+}
+
+.q-row.run {
+  border-color: var(--amber);
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.q-row.done { box-shadow: inset 3px 0 0 #7fb069; }
+.q-row.err { box-shadow: inset 3px 0 0 var(--rec); }
+.q-row.cancel { box-shadow: inset 3px 0 0 #6d6458; }
+
+.q-idx {
+  font-family: var(--mono);
+  color: var(--text-dim);
+  font-size: 12px;
+  padding-top: 4px;
+}
+
+.q-name {
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.q-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.q-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+.q-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.q-note.warn { color: #f0b2ac; }
+.q-note.ok { color: var(--amber-soft); }
+
+.chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.chip.run { color: #1a1610; background: var(--amber); border-color: var(--amber); }
+.chip.done { color: #d5ecc8; border-color: #3f5a36; }
+.chip.err { color: #f0b2ac; border-color: #6a3a36; }
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.format-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+@media (max-width: 960px) {
+  .workspace { grid-template-columns: 1fr; }
+  .transport { align-items: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-card.ant-card::before { opacity: 0.55; }
+}
