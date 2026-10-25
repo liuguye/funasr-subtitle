@@ -6,10 +6,13 @@
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
+from pathlib import Path
 
 from .localfiles import MEDIA_SUFFIXES
 
@@ -56,8 +59,13 @@ def _media_filter() -> str:
     return "音视频|" + ";".join(globs) + "|所有文件|*.*"
 
 
-def _windows_script(mode: str) -> str:
-    """固定脚本，不拼用户输入。"""
+def _ps_single(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+def _windows_script(mode: str, result_file: str) -> str:
+    """固定脚本。结果路径是我们自己的临时文件，不拼用户输入。"""
+    quoted = _ps_single(result_file)
     if mode == "directory":
         dialog = r"""
 $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -72,7 +80,9 @@ $dlg.Multiselect = $true
 $dlg.Title = '选择音视频'
 $dlg.Filter = '{_media_filter()}'
 $dlg.RestoreDirectory = $true
-$dlg.CheckFileExists = $true
+# 云盘占位 / 重解析点（山鸭 Integrated 等）打开存在性检查时，选完经常拿不到路径。
+$dlg.CheckFileExists = $false
+$dlg.ValidateNames = $false
 """
         chosen = r"$dlg.FileNames"
     return f"""
@@ -94,15 +104,63 @@ $owner.Activate()
 {dialog}
 $result = $dlg.ShowDialog($owner)
 $owner.Close()
+$lines = New-Object System.Collections.Generic.List[string]
 if ($result -eq [System.Windows.Forms.DialogResult]::OK) {{
-  [Console]::Out.WriteLine('OK')
+  [void]$lines.Add('OK')
   foreach ($name in @({chosen})) {{
-    if ($name) {{ [Console]::Out.WriteLine($name) }}
+    if ($name) {{ [void]$lines.Add([string]$name) }}
   }}
 }} else {{
-  [Console]::Out.WriteLine('CANCELLED')
+  [void]$lines.Add('CANCELLED')
+}}
+$out = {quoted}
+[System.IO.File]::WriteAllLines($out, $lines.ToArray(), $utf8)
+foreach ($line in $lines) {{
+  [Console]::Out.WriteLine($line)
 }}
 """
+
+
+def read_picker_result(path: Path) -> str:
+    """读对话框写下的 UTF-8 结果。顺手认 BOM 和 UTF-16，避免编码看空。"""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    if not data.strip(b"\x00 \t\r\n"):
+        return ""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", errors="replace")
+    if b"\x00" in data[:4]:
+        try:
+            return data.decode("utf-16", errors="replace")
+        except UnicodeError:
+            pass
+    return data.decode("utf-8-sig", errors="replace")
+
+
+def paths_from_dialog(file_text: str, stdout: str, returncode: int = 0, stderr: str = "") -> list[str]:
+    """优先用结果文件。标准输出是空的或编码坏了时，仍能拿到路径。"""
+    saw_error: PickerError | None = None
+    for text in (file_text, stdout):
+        if not (text or "").strip():
+            continue
+        try:
+            return _finish(text, returncode, stderr)
+        except PickerCancelled:
+            raise
+        except PickerError as exc:
+            saw_error = exc
+    if returncode != 0:
+        tail = (stderr or "").strip().splitlines()
+        extra = tail[-1][:160] if tail else ""
+        message = "系统文件窗口没打开。"
+        if extra:
+            message = f"{message}（{extra}）"
+        raise PickerError(message)
+    if saw_error is not None:
+        raise saw_error
+    raise PickerError("系统文件窗口没有返回结果。")
 
 
 def _run(argv: list[str], script: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -141,11 +199,17 @@ def _finish(stdout: str, returncode: int, stderr: str) -> list[str]:
 
 
 def _open_windows(mode: str) -> list[str]:
-    proc = _run(
-        ["powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", "-"],
-        _windows_script(mode),
-    )
-    return _finish(proc.stdout, proc.returncode, proc.stderr)
+    fd, name = tempfile.mkstemp(prefix="fs-pick-", suffix=".txt")
+    os.close(fd)
+    result = Path(name)
+    try:
+        proc = _run(
+            ["powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", "-"],
+            _windows_script(mode, str(result)),
+        )
+        return paths_from_dialog(read_picker_result(result), proc.stdout, proc.returncode, proc.stderr)
+    finally:
+        result.unlink(missing_ok=True)
 
 
 def _open_macos(mode: str) -> list[str]:
