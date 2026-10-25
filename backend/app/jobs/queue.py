@@ -101,10 +101,26 @@ class JobManager:
                   options=options, percent=0.0)
         self.jobs[job_id] = job
         self._cancels[job_id] = threading.Event()
-        # 记录输入路径
+        # 记录输入路径。入队前通知子类，避免 worker 抢在旁路信息写上之前开工。
         self._inputs[job_id] = input_path
+        self._note_created(job, input_path)
         self._q.put(job_id)
         return job
+
+    def _note_created(self, job: Job, input_path: Path) -> None:
+        """入队前的扩展点（本机路径、要不要删上传件）。默认不记。"""
+        return None
+
+    def _before_done(self, job: Job) -> dict | None:
+        """完成事件发出前的扩展点。返回值并进 done 载荷的 job 对象。
+
+        转写已经成功；调用方会吞掉这里的异常，避免旁路写盘失败把字幕弄丢。
+        """
+        return None
+
+    def _should_delete_input(self, job_id: str, path: Path) -> bool:
+        """终态后是否删掉输入所在目录。直接解码本机文件时子类应返回 False。"""
+        return True
 
     def get(self, job_id: str) -> Job | None:
         return self.jobs.get(job_id)
@@ -196,11 +212,18 @@ class JobManager:
         if cancel.is_set():
             return self._cancelled(job)
 
-        # 3) 组装完成
+        # 3) 组装完成。旁路字段（写到源文件旁边）由子类在发出前补上。
         job.segments = segments
         job.status = JobStatus.done
         job.percent = 100.0
-        self.broker.publish(f"job:{job.id}", {"type": "done", "job": job.model_dump(mode="json")})
+        payload = job.model_dump(mode="json")
+        try:
+            extra = self._before_done(job) or {}
+        except Exception:  # noqa: BLE001  写字幕到旁边失败时，转写结果仍然算完成
+            extra = {}
+        if extra:
+            payload.update(extra)
+        self.broker.publish(f"job:{job.id}", {"type": "done", "job": payload})
 
     # ---- 状态/事件 helpers ----
     _STAGE_TO_STATUS: ClassVar[dict[str, JobStatus]] = {
@@ -261,7 +284,8 @@ class JobManager:
         """
         self._cancels.pop(job_id, None)
         p = self._inputs.pop(job_id, None)
-        if p:
+        delete = self._should_delete_input(job_id, Path(p) if p else Path())
+        if p and delete:
             try:
                 shutil.rmtree(Path(p).parent, ignore_errors=True)
             except Exception:  # noqa: BLE001
