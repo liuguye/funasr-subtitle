@@ -110,6 +110,35 @@
     radial-gradient(120% 80% at 50% 0%, rgba(232, 163, 61, 0.08), transparent 60%);
 }
 
+.file-bay {
+  min-height: 148px;
+  margin-top: 4px;
+  padding: 16px 16px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(232, 163, 61, 0.08), transparent 60%),
+    rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .18s, background .18s;
+}
+
+.file-bay:hover,
+.file-bay.over {
+  border-color: var(--amber);
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(232, 163, 61, 0.14), transparent 62%),
+    rgba(232, 163, 61, 0.05);
+}
+
+.file-bay .bay-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .path-add {
   margin-top: 14px;
   border: 1px dashed var(--border);

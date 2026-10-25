@@ -8,7 +8,7 @@ import {
   SubtitleApiError,
   type WsHandle,
 } from "../api";
-import { createOutputJob, resolveLocalMedia, type ResolvedPath } from "./api";
+import { createOutputJob, pickLocalMedia, resolveLocalMedia, type ResolvedPath } from "./api";
 import { newKey, pathFromFile } from "./paths";
 import type { JobWithOutput, QueueItem, RunOptions } from "./types";
 
@@ -54,7 +54,9 @@ function applyResolved(item: QueueItem, row: ResolvedPath | undefined): QueueIte
 export function useBatchQueue(getOptions: () => RunOptions, notify: Notice) {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [running, setRunning] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [activeKey, setActiveKey] = useState<string | null>(null);
+  const pickingRef = useRef(false);
   const itemsRef = useRef<QueueItem[]>([]);
   const runningRef = useRef(false);
   const stopRef = useRef(false);
@@ -142,10 +144,20 @@ export function useBatchQueue(getOptions: () => RunOptions, notify: Notice) {
     }
     if (res.truncated) notifyRef.current("warning", "只加入了前 300 个");
     const known = new Set(
-      itemsRef.current.map((it) => it.sourcePath).filter(Boolean),
+      itemsRef.current.map((it) => it.sourcePath.trim()).filter(Boolean),
     );
+    const slots = new Map<string, QueueItem[]>();
+    for (const it of itemsRef.current) {
+      if (it.status !== "waiting" || it.pathState === "ok") continue;
+      const name = it.name.trim().toLowerCase();
+      const list = slots.get(name) ?? [];
+      list.push(it);
+      slots.set(name, list);
+    }
+    const patches = new Map<string, Partial<QueueItem>>();
     const fresh: QueueItem[] = [];
     const problems: string[] = [];
+    let filled = 0;
     for (const row of res.items) {
       if (!row.exists || !row.path) {
         if (row.error) problems.push(row.error);
@@ -153,19 +165,59 @@ export function useBatchQueue(getOptions: () => RunOptions, notify: Notice) {
       }
       if (known.has(row.path)) continue;
       known.add(row.path);
+      const slot = slots.get((row.name || "").trim().toLowerCase())?.shift();
+      if (slot) {
+        filled += 1;
+        patches.set(slot.key, {
+          sourcePath: row.path,
+          pathState: "ok",
+          pathMessage: "完成后写到这个文件旁边",
+        });
+        continue;
+      }
       const item = blank({ key: newKey(), name: row.name || row.path, file: null, sourcePath: row.path });
       fresh.push({ ...item, pathState: "ok", pathMessage: "完成后写到这个文件旁边" });
     }
-    if (fresh.length) commit([...itemsRef.current, ...fresh]);
+    if (patches.size || fresh.length) {
+      commit([
+        ...itemsRef.current.map((it) => (patches.has(it.key) ? { ...it, ...patches.get(it.key) } : it)),
+        ...fresh,
+      ]);
+    }
     if (problems.length) {
       const head = problems.slice(0, 3).join("；");
-      notifyRef.current("warning", fresh.length ? `有 ${problems.length} 条没加进去：${head}` : head);
-    } else if (fresh.length === 0) {
+      notifyRef.current("warning", fresh.length || filled ? `有 ${problems.length} 条没加进去：${head}` : head);
+    } else if (fresh.length === 0 && filled === 0) {
       notifyRef.current("info", "没有新的文件可加入");
+    } else if (filled && fresh.length) {
+      notifyRef.current("success", `已加入 ${fresh.length} 个，并补上 ${filled} 个路径`);
+    } else if (filled) {
+      notifyRef.current("success", `已补上 ${filled} 个路径，字幕会写到源文件旁边`);
     } else {
       notifyRef.current("success", `已加入 ${fresh.length} 个`);
     }
   }, [commit]);
+
+  const pick = useCallback(async (mode: "files" | "directory") => {
+    if (pickingRef.current) return;
+    pickingRef.current = true;
+    setPicking(true);
+    try {
+      const res = await pickLocalMedia(mode);
+      if (res.cancelled) return;
+      if (res.truncated) notifyRef.current("warning", "选中的太多，只加入前 300 个");
+      if (res.paths.length === 0) {
+        notifyRef.current("info", mode === "directory" ? "没有选中文件夹" : "没有选中文件");
+        return;
+      }
+      await addPathText(res.paths.join("\n"));
+    } catch (e) {
+      notifyRef.current("error", e instanceof SubtitleApiError ? e.message : "系统文件窗口没打开");
+    } finally {
+      pickingRef.current = false;
+      setPicking(false);
+    }
+  }, [addPathText]);
 
   const applyDirectory = useCallback(async (directory: string) => {
     const dir = directory.trim();
@@ -411,8 +463,10 @@ export function useBatchQueue(getOptions: () => RunOptions, notify: Notice) {
   return {
     items,
     running,
+    picking,
     activeKey,
     addFiles,
+    pick,
     addPathText,
     applyDirectory,
     setPath,

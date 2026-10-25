@@ -7,3 +7,11 @@ export const ACCEPT_MEDIA = [
   ".mp4", ".m4v", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".webm", ".ts", ".m2ts",
   ".mts", ".vob", ".mpg", ".mpeg", ".3gp", ".3g2", ".ogv", ".rmvb", ".asf", ".f4v",
 ].join(",");
+
+const MEDIA_EXT = new Set(ACCEPT_MEDIA.split(",").filter((item) => item.startsWith(".")));
+
+export function isMediaName(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return false;
+  return MEDIA_EXT.has(name.slice(dot).toLowerCase());
+}

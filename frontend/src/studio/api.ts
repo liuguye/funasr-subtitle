@@ -34,6 +34,23 @@ async function parseError(res: Response): Promise<never> {
   throw new SubtitleApiError(err);
 }
 
+export interface PickResponse {
+  paths: string[];
+  cancelled: boolean;
+  truncated: boolean;
+}
+
+export function pickLocalMedia(mode: "files" | "directory"): Promise<PickResponse> {
+  return fetch("/api/local-media/pick", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  }).then(async (res) => {
+    if (!res.ok) return parseError(res);
+    return res.json() as Promise<PickResponse>;
+  });
+}
+
 export function resolveLocalMedia(body: {
   paths?: string[];
   directory?: string;

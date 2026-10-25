@@ -75,8 +75,8 @@
 
 1. 双击 `funasr-subtitle.exe`，浏览器自动打开。
 2. 首次按页面提示下载默认模型（之后离线）。
-3. 拖入一个或多个音频 / 视频，或用「从本机路径添加」贴上绝对路径。选语言 / 模型（可填热词、调每行最多几个字、选标点模式）→ 点「开始转写」。队列里的文件会一个接一个跑。
-4. 有本机路径时，勾选的字幕（默认 `.srt`）写到源文件同一目录，名字用源文件的主名。页面里仍可下载 SRT / VTT / TXT / JSON 或「复制全文」。浏览器选中的文件通常没有完整路径，这时界面会说明「只在页面里下载」；把绝对路径填上，或直接从路径加入，才会写到旁边。`.srt` 可导入 [subtitle-translator](https://tools.newzone.top/zh/subtitle-translator) 翻译。
+3. 点「选择文件」或「选择文件夹」。页面会弹出**系统文件窗口**（不是浏览器那个选文件框），可以一次选多个音视频，也可以把文件直接拖进页面。选语言 / 模型（可填热词、调每行最多几个字、选标点模式）→ 点「开始转写」。队列里的文件会一个接一个跑。
+4. 用系统窗口选中的文件带有本机路径，勾选的字幕（默认 `.srt`）会写到源文件同一目录，名字用源文件的主名，例如「视频.mp4」旁边出现「视频.srt」。页面里仍可下载 SRT / VTT / TXT / JSON 或「复制全文」。若把文件拖进浏览器、而浏览器没带上路径，队列里会提示再点一次「选择文件」——不用手填绝对路径。`.srt` 可导入 [subtitle-translator](https://tools.newzone.top/zh/subtitle-translator) 翻译。
 5. 退出：页面右上角「停止服务」或右下角托盘图标。
 
 ### 换端口
@@ -92,16 +92,18 @@ REM 钉死端口，被占用就退出，不顺延
 funasr-subtitle.exe --port 9000 --strict-port
 ```
 
+开发时**页面默认端口是 5180**，不用 Vite 常见的 5173，免得和本机其他前端服务撞车。仍可用 `VITE_PORT` 改成别的端口。
+
 ```powershell
-# 开发：第一个参数是后台端口，Vite 代理会跟着走。页面端口用 VITE_PORT（默认 5173）
+# 开发：第一个参数是后台端口，Vite 代理会跟着走。页面端口用 VITE_PORT（默认 5180）
 start-dev.bat 9000
-# 或
-$env:FUNASR_SUBTITLE_PORT = "9000"; $env:VITE_PORT = "5174"; .\start-dev.bat
+# 或同时改页面端口
+$env:FUNASR_SUBTITLE_PORT = "9000"; $env:VITE_PORT = "5190"; .\start-dev.bat
 ```
 
 ```bash
 ./start-dev.sh 9000
-VITE_PORT=5174 ./start-dev.sh 9000
+VITE_PORT=5190 ./start-dev.sh 9000
 ```
 
 开发时的 uvicorn **不会**在端口被占时自动换端口。便携入口（`funasr-subtitle.exe` / `python -m app.main`）默认会顺延，除非加上 `--strict-port` 或 `FUNASR_SUBTITLE_STRICT_PORT=1`。页面右上角的 `:端口` 是当前网页的端口，用来区分开着的多份页面。
@@ -131,7 +133,7 @@ VITE_PORT=5174 ./start-dev.sh 9000
 
 **环境**：Windows · Python 3.11（`pyproject.toml` 钉的是 `>=3.11,<3.12`）· Node 20+（CI 跑的是 24，本地也建议 24）
 
-根目录双击 `start-dev.bat`，会在同一窗口启动后端（默认 8765）和前端（默认 5173）；`Ctrl+C` 结束两者。换端口见上文 [换端口](#换端口)。macOS / Linux 可用 `./start-dev.sh`。
+根目录双击 `start-dev.bat`，会在同一窗口启动后端（默认 8765）和前端（默认 **5180**）；`Ctrl+C` 结束两者。换端口见上文 [换端口](#换端口)。macOS / Linux 可用 `./start-dev.sh`。
 
 ```bat
 start-dev.bat
@@ -209,7 +211,7 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1 -Variant full
 | `FUNASR_SUBTITLE_PORT`          | 8765                             | 服务端口。便携入口被占用则自增扫描；`--port` 同样有效 |
 | `FUNASR_SUBTITLE_HOST`          | 127.0.0.1                        | 监听地址。`--host` 同样有效                         |
 | `FUNASR_SUBTITLE_STRICT_PORT`   | 关                               | 设 `1` 或加 `--strict-port`：端口被占用直接退出     |
-| `VITE_PORT`                     | 5173                             | 仅开发：Vite 页面端口                               |
+| `VITE_PORT`                     | 5180                             | 仅开发：Vite 页面端口（避开 5173）                  |
 | `VITE_BACKEND_PORT`             | 同 `FUNASR_SUBTITLE_PORT`        | 仅开发：Vite 把 `/api` 和 `/ws` 代理到这个后台端口  |
 | `FUNASR_SUBTITLE_MAX_CHARS`     | 30                               | 每行最大显示宽度默认值（0=不限制）                 |
 | `FUNASR_SUBTITLE_MAX_CUE_MS`    | 7000                             | 单条字幕最长时长（毫秒）                           |

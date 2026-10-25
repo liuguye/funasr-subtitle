@@ -152,16 +152,15 @@ export default function StudioPage() {
             <BatchQueue
               items={queue.items}
               running={queue.running}
+              picking={queue.picking}
               selectedKey={selectedKey}
               exportFormats={exportFormats}
               modelNotDownloaded={modelNotDownloaded}
               onSelect={setSelectedKey}
               onFormats={setExportFormats}
               onFiles={queue.addFiles}
+              onPick={(mode) => { void queue.pick(mode); }}
               onPathText={(text) => { void queue.addPathText(text); }}
-              onApplyDirectory={(dir) => { void queue.applyDirectory(dir); }}
-              onPathChange={queue.setPath}
-              onPathCommit={queue.commitPath}
               onMove={queue.move}
               onRemove={(key) => { void queue.remove(key); }}
               onClear={queue.clearFinished}

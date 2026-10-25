@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import shutil
 import uuid
 from pathlib import Path
@@ -15,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from ..config import MAX_UPLOAD_MB, jobs_dir
 from ..media.localfiles import MAX_RESOLVE, classify_path, resolve_local_entries
+from ..media.picker import PickerCancelled, PickerError, pick_media
 from ..models import DEFAULT_MODEL_ID
 from ..schemas import JobOptions
 from ..subtitle import EXPORT_FORMATS
@@ -141,6 +143,27 @@ async def resolve_local_media(body: ResolveBody, request: Request):
         body.paths, body.directory, body.names, expand=body.expand,
     )
     return {"items": items, "truncated": truncated}
+
+
+class PickBody(BaseModel):
+    mode: str = "files"
+
+
+@router.post("/local-media/pick")
+async def pick_local_media(body: PickBody, request: Request):
+    """弹出本机系统文件窗口，返回选中的绝对路径。仅本机客户端。"""
+    if not _is_local(request):
+        return _err("local_only", "系统文件窗口只允许本机打开。", 403)
+    if body.mode not in {"files", "directory"}:
+        return _err("bad_mode", "只能选文件或文件夹。")
+    try:
+        paths = await asyncio.to_thread(pick_media, body.mode)
+    except PickerCancelled:
+        return {"paths": [], "cancelled": True, "truncated": False}
+    except PickerError as exc:
+        return _err("picker_unavailable", exc.message, 503)
+    truncated = len(paths) > MAX_RESOLVE
+    return {"paths": paths[:MAX_RESOLVE], "cancelled": False, "truncated": truncated}
 
 
 @router.post("/jobs/local")

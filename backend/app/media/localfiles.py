@@ -44,7 +44,7 @@ def classify_path(raw: str) -> dict:
     if resolved.is_dir():
         return _item(
             text, str(resolved), resolved.name, False,
-            "这是文件夹。要加里面的文件，请走「从路径添加」。",
+            "这是文件夹。要加里面的文件，请用「选择文件夹」。",
         )
     if not resolved.is_file():
         return _item(text, str(resolved), resolved.name, False, "找不到这个文件")

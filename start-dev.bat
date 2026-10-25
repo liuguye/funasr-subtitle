@@ -3,11 +3,12 @@ setlocal
 cd /d "%~dp0"
 
 REM 端口：start-dev.bat 9000  或  set FUNASR_SUBTITLE_PORT=9000
-REM 页面端口另设 VITE_PORT（默认 5173）。后台被占用时 uvicorn 会直接失败，不会偷偷换端口。
+REM 页面端口另设 VITE_PORT（默认 5180，不用 5173，避免和本机其他 Vite 服务冲突）。
+REM 后台被占用时 uvicorn 会直接失败，不会偷偷换端口。
 set "PORT=8765"
 if not "%~1"=="" set "PORT=%~1"
 if "%~1"=="" if not "%FUNASR_SUBTITLE_PORT%"=="" set "PORT=%FUNASR_SUBTITLE_PORT%"
-if "%VITE_PORT%"=="" set "VITE_PORT=5173"
+if "%VITE_PORT%"=="" set "VITE_PORT=5180"
 
 REM Prefer full/CUDA venv when present; otherwise onnx/CPU.
 set "BACKEND=onnx"

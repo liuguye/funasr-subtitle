@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # 开发启动：后台 + 前端。用法：
-#   ./start-dev.sh              # 后台 8765，页面 5173
+#   ./start-dev.sh              # 后台 8765，页面 5180
 #   ./start-dev.sh 9000         # 后台改到 9000（Vite 代理跟着走）
-#   VITE_PORT=5174 ./start-dev.sh 9000
+#   VITE_PORT=5190 ./start-dev.sh 9000
 # Ctrl+C 结束两边。指定端口被占用时直接失败，不会顺延。
 set -euo pipefail
 cd "$(dirname "$0")"
 
 PORT="${1:-${FUNASR_SUBTITLE_PORT:-8765}}"
-UI_PORT="${VITE_PORT:-5173}"
+UI_PORT="${VITE_PORT:-5180}"
 
 if [[ -x backend/.venv-full/bin/python ]]; then
   PY="backend/.venv-full/bin/python"
